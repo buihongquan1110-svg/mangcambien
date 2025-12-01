@@ -1,62 +1,41 @@
-🚪 HỆ THỐNG CỬA TỰ ĐỘNG NHẬN DIỆN KHUÔN MẶT + BLUETOOTH/WIFI
+# 🚪 Smart Door System – Face Recognition + Bluetooth/WiFi  
+### ESP32 • Raspberry Pi • Blynk • AI – OpenCV
 
-(ESP32 – Blynk – Raspberry Pi – AI Face Recognition)
+---
 
-📌 Giới thiệu
+## 📌 Giới thiệu
+Dự án xây dựng mô hình **cửa thông minh** kết hợp giữa:
+- **ESP32**: điều khiển cửa qua WiFi/Blynk và cảm biến siêu âm.
+- **Raspberry Pi**: nhận diện khuôn mặt bằng **AI – OpenCV**.
+- **Camera CMOS**: thu hình ảnh realtime.
+- **Servo/Motor**: đóng mở cửa tự động.
 
-Đề tài xây dựng mô hình cửa thông minh sử dụng ESP32 kết hợp điều khiển từ xa thông qua WiFi/Blynk, đồng thời tích hợp AI nhận diện khuôn mặt chạy trên Raspberry Pi nhằm tăng tính an toàn và tự động hóa trong hệ thống nhà thông minh (Smart Home).
+Hệ thống hoạt động theo cơ chế:
+1. Phát hiện người → ESP32 gửi tín hiệu sang RPi.  
+2. RPi nhận diện khuôn mặt → phản hồi kết quả.  
+3. Nếu đúng người → ESP32 mở cửa → tự đóng sau 5 giây.  
+4. Người dùng cũng có thể mở cửa qua ứng dụng **Blynk**.
 
-Hệ thống cho phép mở cửa bằng:
+---
 
-Ứng dụng Blynk.
+## 🎯 Mục tiêu đề tài
+- Xây dựng hệ thống cửa tự động điều khiển qua Bluetooth/WiFi.  
+- Tích hợp AI nhận diện khuôn mặt nâng cao bảo mật.  
+- Thiết kế mô hình nhà thông minh thu nhỏ dễ demo.  
+- Đảm bảo hệ thống ổn định, trực quan, dễ mở rộng.
 
-Nhận diện chủ nhân qua Bluetooth/WiFi.
+---
 
-Nhận dạng khuôn mặt bằng AI.
+## 🧩 Kiến trúc hệ thống
 
-🎯 Mục tiêu đề tài
+### 🔹 1. ESP32 – IoT
+- Điều khiển servo mở/đóng cửa.  
+- Kết nối Blynk qua WiFi.  
+- Đọc cảm biến siêu âm để phát hiện người.  
+- Hiển thị trạng thái lên LCD 1602 I2C.  
+- Gửi/nhận tín hiệu với Raspberry Pi qua GPIO.
 
-Xây dựng mô hình cửa tự động thông minh điều khiển qua WiFi/Bluetooth.
-
-Ứng dụng AI để nhận diện khuôn mặt người dùng.
-
-Hiển thị trạng thái cửa và thông số lên LCD.
-
-Tạo mô hình trực quan phục vụ trình bày và demo.
-
-Đảm bảo hoạt động ổn định, an toàn và dễ mở rộng trong tương lai.
-
-🧩 Cơ sở lý thuyết
-🔹 IoT & Nhà thông minh
-
-IoT là mạng lưới thiết bị thông minh có khả năng kết nối và trao đổi dữ liệu qua Internet. Trong nhà thông minh, IoT được ứng dụng để điều khiển đèn, cửa, an ninh, điều hòa,… giúp tăng tiện lợi và hiệu quả.
-
-🔹 ESP32
-
-Vi điều khiển 32-bit tích hợp WiFi + Bluetooth.
-
-CPU dual-core 240 MHz, nhiều giao tiếp (GPIO, ADC, PWM, I2C…).
-
-Đóng vai trò trung tâm điều khiển cửa và kết nối Internet.
-
-🔹 Nền tảng IoT Blynk
-
-Giao diện điều khiển thiết bị từ xa qua Internet.
-
-Kết nối ESP32 ↔ Cloud ↔ Smartphone.
-
-Hỗ trợ nút nhấn, hiển thị dữ liệu, log sự kiện.
-
-🔹 Động cơ Servo
-
-Điều khiển đóng/mở cửa bằng góc quay chính xác thông qua tín hiệu PWM.
-
-🔹 Nhận diện khuôn mặt AI (Raspberry Pi)
-
-Camera CMOS ghi hình → Raspberry Pi xử lý bằng OpenCV.
-
-Phát hiện bằng Haar Cascade.
-
-Nhận dạng bằng LBPH Face Recognizer.
-
-Gửi tín hiệu xác thực về ESP32 thông qua GPIO.
+### 🔹 2. Raspberry Pi – AI
+- Sử dụng OpenCV để phát hiện & nhận dạng khuôn mặt.  
+- Thu hình từ camera CMOS USB.  
+- Xác thực người dùng → gửi tín hiệu về ESP32.
