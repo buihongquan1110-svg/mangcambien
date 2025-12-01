@@ -1,0 +1,251 @@
+#define BLYNK_TEMPLATE_ID "TMPL621ImmIwU"
+#define BLYNK_TEMPLATE_NAME "SmartHome"
+#define BLYNK_AUTH_TOKEN "HMrNV7xHcQXoTTQVnrYPy28W5urJlel2"
+
+#include <WiFi.h>
+#include <BlynkSimpleEsp32.h>
+#include <WiFiUdp.h>
+#include <NTPClient.h>
+#include <ESP32Servo.h>
+#include <LiquidCrystal_I2C.h>
+
+// ===== CONFIG =====
+const char* ssid = "OPPO Reno4";
+const char* pass = "thanh@86868686";
+char blynkToken[] = BLYNK_AUTH_TOKEN;
+
+// Cáº¥u hÃ¬nh mÃºi giá» (UTC +7)
+const long utcOffsetSeconds = 7 * 3600;
+
+// ChÃ¢n pháº§n cá»©ng
+const int TRIG_PIN = 14;
+const int ECHO_PIN = 27;
+const int SERVO_PIN = 13;
+const int LED_PIN = 4;
+
+// Giao tiáº¿p GPIO vá»›i Raspberry Pi
+const int PROX_TO_RPi_PIN = 16;  // ESP32 -> RPi (bÃ¡o phÃ¡t hiá»‡n ngÆ°á»i)
+const int AUTH_FROM_RPi_PIN = 17; // RPi -> ESP32 (bÃ¡o xÃ¡c thá»±c thÃ nh cÃ´ng)
+
+// NgÆ°á»¡ng & thá»i gian
+const int PROX_THRESHOLD_CM = 50;
+const unsigned long DOOR_OPEN_MS = 5000;
+const unsigned long PROX_COOLDOWN_MS = 4000;
+const unsigned long AUTH_TIMEOUT_MS = 30000;
+
+// Blynk Virtual Pins
+#define V_DISTANCE V1
+#define V_REMOTE_BTN V3
+
+// LCD I2C
+LiquidCrystal_I2C lcd(0x27, 16, 2);
+
+// Servo
+Servo myServo;
+const int SERVO_OPEN_ANGLE = 180;
+const int SERVO_CLOSED_ANGLE = 0;
+
+// NTP Client
+WiFiUDP ntpUDP;
+NTPClient timeClient(ntpUDP, "pool.ntp.org", utcOffsetSeconds);
+
+// Tráº¡ng thÃ¡i cá»­a
+enum DoorState { CLOSED, OPEN, WAITING_FOR_AUTH };
+volatile DoorState currentDoorState = CLOSED;
+unsigned long doorOpenedAt = 0;
+unsigned long lastProxTrigger = 0;
+
+unsigned long lastDistanceRead = 0;
+const unsigned long DIST_READ_INTERVAL = 250;
+int lastDistance = 999;
+
+BlynkTimer timer;
+
+// ====== FUNCTIONS ======
+bool isNight() {
+  int hour = timeClient.getHours();
+  return (hour >= 18 || hour < 6);
+}
+
+int readDistanceCM() {
+  digitalWrite(TRIG_PIN, LOW);
+  delayMicroseconds(2);
+  digitalWrite(TRIG_PIN, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(TRIG_PIN, LOW);
+
+  long duration = pulseIn(ECHO_PIN, HIGH, 30000);
+  if (duration == 0) return 999;
+  return duration / 58;
+}
+
+void updateLCD() {
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print("Dist: ");
+  if (lastDistance >= 200) lcd.print("---");
+  else lcd.print(String(lastDistance) + " cm");
+
+  lcd.setCursor(0, 1);
+  lcd.print("Door: ");
+  switch (currentDoorState) {
+    case CLOSED:
+      lcd.print("Closed");
+      break;
+    case OPEN:
+      lcd.print("Open");
+      break;
+    case WAITING_FOR_AUTH:
+      lcd.print("Auth RPi");
+      break;
+  }
+  lcd.print(isNight() ? " N" : " D");
+}
+
+// Giao tiáº¿p GPIO vá»›i RPi
+bool requestFaceAuth() {
+  digitalWrite(PROX_TO_RPi_PIN, HIGH);
+  Serial.println("Sending HIGH signal to RPi (Proximity Detected)");
+
+  unsigned long authStartTime = millis();
+  bool authenticated = false;
+
+  while (millis() - authStartTime < AUTH_TIMEOUT_MS) {
+    if (digitalRead(AUTH_FROM_RPi_PIN) == HIGH) {
+      authenticated = true;
+      Serial.println("Received HIGH signal from RPi (Authentication Success!)");
+      break;
+    }
+    delay(10);
+  }
+
+  digitalWrite(PROX_TO_RPi_PIN, LOW);
+  return authenticated;
+}
+
+void openDoor(bool fromRemote = false) {
+  myServo.write(SERVO_OPEN_ANGLE);
+  currentDoorState = OPEN;
+  doorOpenedAt = millis();
+
+  if (isNight()) digitalWrite(LED_PIN, HIGH);
+
+  Serial.println(String("Door opened") + (fromRemote ? " (remote)" : ""));
+  Serial.print("Time: "); Serial.println(timeClient.getFormattedTime());
+
+  updateLCD();
+  Blynk.logEvent("door_status", "ðŸšª Cá»­a Ä‘ang má»Ÿ!");
+}
+
+void closeDoor() {
+  myServo.write(SERVO_CLOSED_ANGLE);
+  currentDoorState = CLOSED;
+  digitalWrite(LED_PIN, LOW);
+
+  Serial.println("Door closed");
+  updateLCD();
+  Blynk.logEvent("door_status", "ðŸšª Cá»­a Ä‘Ã£ Ä‘Ã³ng!");
+}
+
+// Blynk Ä‘iá»u khiá»ƒn má»Ÿ/Ä‘Ã³ng cá»­a
+BLYNK_WRITE(V_REMOTE_BTN) {
+  int val = param.asInt();
+  if (val == 1) openDoor(true);
+  else closeDoor();
+}
+
+void periodicTasks() {
+  lastDistance = (lastDistance >= 200) ? 999 : lastDistance;
+  Blynk.virtualWrite(V_DISTANCE, lastDistance);
+  updateLCD();
+}
+
+// ===== SETUP =====
+void setup() {
+  Serial.begin(115200);
+  delay(200);
+
+  pinMode(TRIG_PIN, OUTPUT);
+  pinMode(ECHO_PIN, INPUT);
+  pinMode(LED_PIN, OUTPUT);
+  digitalWrite(LED_PIN, LOW);
+
+  pinMode(PROX_TO_RPi_PIN, OUTPUT);
+  digitalWrite(PROX_TO_RPi_PIN, LOW);
+  pinMode(AUTH_FROM_RPi_PIN, INPUT_PULLDOWN);
+
+  myServo.attach(SERVO_PIN);
+  myServo.write(SERVO_CLOSED_ANGLE);
+
+  lcd.init();
+  lcd.backlight();
+  lcd.clear();
+  lcd.print("Booting...");
+
+  // WiFi & Blynk
+  WiFi.begin(ssid, pass);
+  Serial.print("Connecting WiFi");
+  int wcount = 0;
+  while (WiFi.status() != WL_CONNECTED && wcount < 40) {
+    delay(250);
+    Serial.print(".");
+    wcount++;
+  }
+  if (WiFi.status() == WL_CONNECTED) Serial.println("\nWiFi connected");
+  else Serial.println("\nWiFi not connected - Blynk will try later");
+  Serial.println("Starting Blynk...");
+  Serial.println(WiFi.localIP());
+  Blynk.begin(blynkToken, ssid, pass);
+  Serial.println("Blynk started");
+
+  timeClient.begin();
+  timeClient.update();
+
+  lastDistance = 999;
+  updateLCD();
+
+  timer.setInterval(5000L, periodicTasks);
+}
+
+// ===== LOOP =====
+void loop() {
+  Blynk.run();
+  timer.run();
+
+  static unsigned long lastNTPUpdate = 0;
+  if (millis() - lastNTPUpdate > 60000UL) {
+    timeClient.update();
+    lastNTPUpdate = millis();
+  }
+
+  if (millis() - lastDistanceRead >= DIST_READ_INTERVAL) {
+    lastDistanceRead = millis();
+    int d = readDistanceCM();
+    lastDistance = (d != 999) ? d : 999;
+
+    if (lastDistance <= PROX_THRESHOLD_CM && currentDoorState == CLOSED &&
+        (millis() - lastProxTrigger > PROX_COOLDOWN_MS)) {
+      lastProxTrigger = millis();
+      currentDoorState = WAITING_FOR_AUTH;
+      updateLCD();
+      Serial.println("Proximity detected. Starting RPi authentication...");
+
+      bool authenticated = requestFaceAuth();
+
+      if (authenticated) {
+        Serial.println("Authentication successful. Opening door.");
+        openDoor(false);
+      } else {
+        Serial.println("Authentication failed or timed out. Door remains closed.");
+        currentDoorState = CLOSED;
+        updateLCD();
+      }
+    }
+  }
+
+  if (currentDoorState == OPEN && millis() - doorOpenedAt >= DOOR_OPEN_MS) {
+    closeDoor();
+  }
+
+  delay(10);
+}
